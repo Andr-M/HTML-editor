@@ -1,0 +1,449 @@
+package com.javarush.test.level32.lesson15.big01;// Created on 23.04.2016.
+
+import javax.swing.*;
+import javax.swing.text.html.HTMLDocument;
+import javax.swing.text.html.HTMLEditorKit;
+import java.io.*;
+
+public class Controller {
+    private View view;
+    private HTMLDocument document;
+    private File currentFile;
+
+    public static void main(String[] args) {
+        View view = new View();
+        Controller controller = new Controller(view);
+        view.setController(controller);
+        view.init();
+        controller.init();
+    }
+
+    public Controller(View view) {
+        this.view = view;
+    }
+
+    public HTMLDocument getDocument() {
+        return document;
+    }
+
+    public void init(){
+        createNewDocument();
+    }
+
+    public void resetDocument(){
+        if (document != null) {
+            document.removeUndoableEditListener(view.getUndoListener());
+        }
+        document = (HTMLDocument) new HTMLEditorKit().createDefaultDocument();
+        document.addUndoableEditListener(view.getUndoListener());
+        view.update();
+    }
+
+    public void setPlainText(String text){
+        resetDocument();
+        StringReader stringReader = new StringReader(text);
+        HTMLEditorKit htmlEditorKit = new HTMLEditorKit();
+        try {
+            htmlEditorKit.read(stringReader, document, 0);
+        } catch (Exception e){
+            ExceptionHandler.log(e);
+        }
+    }
+
+    public String getPlainText(){
+        StringWriter stringWriter = new StringWriter();
+        HTMLEditorKit htmlEditorKit = new HTMLEditorKit();
+        try {
+            htmlEditorKit.write(stringWriter, document, 0, document.getLength());
+        } catch (Exception e){
+            ExceptionHandler.log(e);
+        }
+        return stringWriter.toString();
+    }
+
+    public void createNewDocument(){
+        view.selectHtmlTab();
+        resetDocument();
+        view.setTitle("HTML редактор");
+        view.resetUndo();
+        currentFile = null;
+    }
+
+    public void openDocument(){
+        try {
+            view.selectHtmlTab();
+            JFileChooser jFileChooser = new JFileChooser();
+            jFileChooser.setFileFilter(new HTMLFileFilter());
+            int returnVal = jFileChooser.showOpenDialog(view);
+            if (returnVal == JFileChooser.APPROVE_OPTION) {
+                currentFile = jFileChooser.getSelectedFile();
+                resetDocument();
+                view.setTitle(currentFile.getName());
+                FileReader fileReader = new FileReader(currentFile);
+                new HTMLEditorKit().read(fileReader, document, 0);
+                view.resetUndo();
+            }
+        } catch (Exception e){
+            ExceptionHandler.log(e);
+        }
+    }
+
+    public void saveDocument(){
+        if (currentFile != null) {
+            try {
+                view.selectHtmlTab();
+                FileWriter fileWriter = new FileWriter(currentFile);
+                new HTMLEditorKit().write(fileWriter, document, 0, document.getLength());
+                fileWriter.close();
+
+            } catch (Exception e) {
+                ExceptionHandler.log(e);
+            }
+        } else saveDocumentAs();
+    }
+
+    public void saveDocumentAs(){
+        try {
+            view.selectHtmlTab();
+            JFileChooser jFileChooser = new JFileChooser();
+            jFileChooser.setFileFilter(new HTMLFileFilter());
+            int returnVal = jFileChooser.showSaveDialog(view);
+
+            if (returnVal == JFileChooser.APPROVE_OPTION) {
+                currentFile = jFileChooser.getSelectedFile();
+                view.setTitle(currentFile.getName());
+                FileWriter fileWriter = new FileWriter(currentFile);
+                new HTMLEditorKit().write(fileWriter, document, 0, document.getLength());
+                fileWriter.close();
+            }
+        } catch (Exception e){
+            ExceptionHandler.log(e);
+        }
+    }
+
+    public void exit(){
+        System.exit(0);
+    }
+}
+
+****
+
+package com.javarush.test.level32.lesson15.big01;// Created on 23.04.2016.
+
+import com.javarush.test.level32.lesson15.big01.listeners.FrameListener;
+import com.javarush.test.level32.lesson15.big01.listeners.TabbedPaneChangeListener;
+import com.javarush.test.level32.lesson15.big01.listeners.UndoListener;
+
+import javax.swing.*;
+import javax.swing.undo.UndoManager;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+
+public class View extends JFrame implements ActionListener {
+    private Controller controller;
+    private JTabbedPane tabbedPane = new JTabbedPane();
+    private JTextPane htmlTextPane = new JTextPane();
+    private JEditorPane plainTextPane = new JEditorPane();
+    private UndoManager undoManager = new UndoManager();
+    private UndoListener undoListener = new UndoListener(undoManager);
+
+    public View() {
+        try{
+            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+        }catch (Exception e){
+            ExceptionHandler.log(e);
+        }
+    }
+
+    public Controller getController() {
+        return controller;
+    }
+
+    public void setController(Controller controller) {
+        this.controller = controller;
+    }
+
+    public UndoListener getUndoListener() {
+        return undoListener;
+    }
+
+    public void initMenuBar(){
+        JMenuBar menuBar = new JMenuBar();
+        MenuHelper.initFileMenu(this, menuBar);
+        MenuHelper.initEditMenu(this, menuBar);
+        MenuHelper.initStyleMenu(this, menuBar);
+        MenuHelper.initAlignMenu(this, menuBar);
+        MenuHelper.initColorMenu(this, menuBar);
+        MenuHelper.initFontMenu(this, menuBar);
+        MenuHelper.initHelpMenu(this, menuBar);
+        this.getContentPane().add(menuBar, BorderLayout.NORTH);
+
+    }
+
+    public void initEditor(){
+        htmlTextPane.setContentType("text/html");
+        JScrollPane scrollHtmlPane = new JScrollPane(htmlTextPane);
+        tabbedPane.addTab("HTML", scrollHtmlPane);
+        JScrollPane scrollPlainPane = new JScrollPane(plainTextPane);
+        tabbedPane.addTab("Текст", scrollPlainPane);
+        tabbedPane.setPreferredSize(new Dimension(800, 400));
+        tabbedPane.addChangeListener(new TabbedPaneChangeListener(this));
+        this.getContentPane().add(tabbedPane, BorderLayout.CENTER);
+    }
+
+    public void initGui(){
+        initMenuBar();
+        initEditor();
+        pack();
+    }
+
+    @Override
+    public void actionPerformed(ActionEvent actionEvent) {
+        switch (actionEvent.getActionCommand()){
+            case "Новый":
+                controller.createNewDocument();
+                break;
+            case "Открыть":
+                controller.openDocument();
+                break;
+            case "Сохранить":
+                controller.saveDocument();
+                break;
+            case "Сохранить как...":
+                controller.saveDocumentAs();
+                break;
+            case "Выход":
+                controller.exit();
+                break;
+            case "О программе":
+                this.showAbout();
+        }
+    }
+
+    public void init(){
+        initGui();
+        FrameListener frameListener = new FrameListener(this);
+        addWindowListener(frameListener);
+        setVisible(true);
+    }
+
+    public void selectedTabChanged(){
+        if (tabbedPane.getSelectedIndex() == 0){
+            controller.setPlainText(plainTextPane.getText());
+        } else {
+            plainTextPane.setText(controller.getPlainText());
+        }
+        this.resetUndo();
+    }
+
+    public boolean canUndo(){
+        return undoManager.canUndo();
+    }
+
+    public boolean canRedo(){
+        return undoManager.canRedo();
+    }
+
+    public void undo(){
+        try{
+            undoManager.undo();
+        } catch (Exception e){
+            ExceptionHandler.log(e);
+        }
+    }
+
+    public void redo(){
+        try{
+            undoManager.redo();
+        } catch (Exception e){
+            ExceptionHandler.log(e);
+        }
+    }
+
+    public void resetUndo(){
+        undoManager.discardAllEdits();
+    }
+
+    public boolean isHtmlTabSelected(){
+        return tabbedPane.getSelectedIndex() == 0;
+    }
+
+    public void selectHtmlTab(){
+        tabbedPane.setSelectedIndex(0);
+        resetUndo();
+    }
+
+    public void update(){
+        htmlTextPane.setDocument(controller.getDocument());
+    }
+
+    public void showAbout(){
+        JOptionPane.showMessageDialog(null, "Das ist fantastisch", "About Program", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    public void exit(){
+        controller.exit();
+    }
+}
+
+***
+
+package com.javarush.test.level32.lesson15.big01;
+
+import com.javarush.test.level32.lesson15.big01.actions.*;
+import com.javarush.test.level32.lesson15.big01.listeners.TextEditMenuListener;
+import com.javarush.test.level32.lesson15.big01.listeners.UndoMenuListener;
+
+import javax.swing.*;
+import javax.swing.text.DefaultEditorKit;
+import javax.swing.text.StyleConstants;
+import javax.swing.text.StyledEditorKit;
+import java.awt.*;
+import java.awt.event.ActionListener;
+
+public class MenuHelper {
+    public static JMenuItem addMenuItem(JMenu parent, String text, ActionListener actionListener) {
+        JMenuItem menuItem = new JMenuItem(text);
+        menuItem.addActionListener(actionListener);
+        parent.add(menuItem);
+        return menuItem;
+    }
+
+    public static JMenuItem addMenuItem(JMenu parent, String text, Action action) {
+        JMenuItem menuItem = addMenuItem(parent, action);
+        menuItem.setText(text);
+        return menuItem;
+    }
+
+    public static JMenuItem addMenuItem(JMenu parent, Action action) {
+        JMenuItem menuItem = new JMenuItem(action);
+        parent.add(menuItem);
+        return menuItem;
+    }
+
+    public static void initHelpMenu(View view, JMenuBar menuBar) {
+        JMenu helpMenu = new JMenu("Помощь");
+        menuBar.add(helpMenu);
+
+        addMenuItem(helpMenu, "О программе", view);
+    }
+
+    public static void initFontMenu(View view, JMenuBar menuBar) {
+        JMenu fontMenu = new JMenu("Шрифт");
+        menuBar.add(fontMenu);
+
+        JMenu fontTypeMenu = new JMenu("Шрифт");
+        fontMenu.add(fontTypeMenu);
+
+        String[] fontTypes = {Font.SANS_SERIF, Font.SERIF, Font.MONOSPACED, Font.DIALOG, Font.DIALOG_INPUT};
+        for (String fontType : fontTypes) {
+            addMenuItem(fontTypeMenu, fontType, new StyledEditorKit.FontFamilyAction(fontType, fontType));
+        }
+
+        JMenu fontSizeMenu = new JMenu("Размер шрифта");
+        fontMenu.add(fontSizeMenu);
+
+        String[] fontSizes = {"6", "8", "10", "12", "14", "16", "20", "24", "32", "36", "48", "72"};
+        for (String fontSize : fontSizes) {
+            addMenuItem(fontSizeMenu, fontSize, new StyledEditorKit.FontSizeAction(fontSize, Integer.parseInt(fontSize)));
+        }
+
+        fontMenu.addMenuListener(new TextEditMenuListener(view));
+    }
+
+    public static void initColorMenu(View view, JMenuBar menuBar) {
+        JMenu colorMenu = new JMenu("Цвет");
+        menuBar.add(colorMenu);
+
+        addMenuItem(colorMenu, new StyledEditorKit.ForegroundAction("Красный", Color.red));
+        addMenuItem(colorMenu, new StyledEditorKit.ForegroundAction("Оранжевый", Color.orange));
+        addMenuItem(colorMenu, new StyledEditorKit.ForegroundAction("Желтый", Color.yellow));
+        addMenuItem(colorMenu, new StyledEditorKit.ForegroundAction("Зеленый", Color.green));
+        addMenuItem(colorMenu, new StyledEditorKit.ForegroundAction("Синий", Color.blue));
+        addMenuItem(colorMenu, new StyledEditorKit.ForegroundAction("Голубой", Color.cyan));
+        addMenuItem(colorMenu, new StyledEditorKit.ForegroundAction("Пурпурный", Color.magenta));
+        addMenuItem(colorMenu, new StyledEditorKit.ForegroundAction("Черный", Color.black));
+
+        colorMenu.addMenuListener(new TextEditMenuListener(view));
+    }
+
+    public static void initAlignMenu(View view, JMenuBar menuBar) {
+        JMenu alignMenu = new JMenu("Выравнивание");
+        menuBar.add(alignMenu);
+
+        addMenuItem(alignMenu, new StyledEditorKit.AlignmentAction("По левому краю", StyleConstants.ALIGN_LEFT));
+        addMenuItem(alignMenu, new StyledEditorKit.AlignmentAction("По центру", StyleConstants.ALIGN_CENTER));
+        addMenuItem(alignMenu, new StyledEditorKit.AlignmentAction("По правому краю", StyleConstants.ALIGN_RIGHT));
+
+        alignMenu.addMenuListener(new TextEditMenuListener(view));
+    }
+
+    public static void initStyleMenu(View view, JMenuBar menuBar) {
+        JMenu styleMenu = new JMenu("Стиль");
+        menuBar.add(styleMenu);
+
+        addMenuItem(styleMenu, "Полужирный", new StyledEditorKit.BoldAction());
+        addMenuItem(styleMenu, "Подчеркнутый", new StyledEditorKit.UnderlineAction());
+        addMenuItem(styleMenu, "Курсив", new StyledEditorKit.ItalicAction());
+
+        styleMenu.addSeparator();
+
+        addMenuItem(styleMenu, "Подстрочный знак", new SubscriptAction());
+        addMenuItem(styleMenu, "Надстрочный знак", new SuperscriptAction());
+        addMenuItem(styleMenu, "Зачеркнутый", new StrikeThroughAction());
+
+        styleMenu.addMenuListener(new TextEditMenuListener(view));
+    }
+
+    public static void initEditMenu(View view, JMenuBar menuBar) {
+        JMenu editMenu = new JMenu("Редактировать");
+        menuBar.add(editMenu);
+
+        JMenuItem undoItem = addMenuItem(editMenu, "Отменить", new UndoAction(view));
+        JMenuItem redoItem = addMenuItem(editMenu, "Вернуть", new RedoAction(view));
+        addMenuItem(editMenu, "Вырезать", new DefaultEditorKit.CutAction());
+        addMenuItem(editMenu, "Копировать", new DefaultEditorKit.CopyAction());
+        addMenuItem(editMenu, "Вставить", new DefaultEditorKit.PasteAction());
+
+        editMenu.addMenuListener(new UndoMenuListener(view, undoItem, redoItem));
+    }
+
+    public static void initFileMenu(View view, JMenuBar menuBar) {
+        JMenu fileMenu = new JMenu("Файл");
+        menuBar.add(fileMenu);
+
+        addMenuItem(fileMenu, "Новый", view);
+        addMenuItem(fileMenu, "Открыть", view);
+        addMenuItem(fileMenu, "Сохранить", view);
+        addMenuItem(fileMenu, "Сохранить как...", view);
+        fileMenu.addSeparator();
+        addMenuItem(fileMenu, "Выход", view);
+    }
+}
+
+***
+
+package com.javarush.test.level32.lesson15.big01;// Created on 24.04.2016.
+
+import javax.swing.filechooser.FileFilter;
+import java.io.File;
+
+public class HTMLFileFilter extends FileFilter {
+    @Override
+    public String getDescription() {
+        return "HTML и HTM файлы";
+    }
+
+    @Override
+    public boolean accept(File file) {
+        if (file.isDirectory())
+            return true;
+        else {
+            return file.getName().toLowerCase().endsWith(".html") || file.getName().toLowerCase().endsWith(".htm");
+        }
+    }
+}
+
+***
+
